@@ -2,52 +2,37 @@
 #define BLYNK_TEMPLATE_NAME "Temperature and Humidity Monitor"
 #define BLYNK_AUTH_TOKEN "Fnsutv56E2mgSljQAWRqkpZbYIzF5vt7"
 
-#include <ArduinoWiFiServer.h>
-//#include <AsyncTCP.h>  // ESP32 ilə birlikdə Asinxron TCP bağlantısı
-#include <BearSSLHelpers.h>
-#include <CertStoreBearSSL.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266WiFiAP.h>
-#include <ESP8266WiFiGeneric.h>
-#include <ESP8266WiFiGratuitous.h>
-#include <ESP8266WiFiMulti.h>
-#include <ESP8266WiFiSTA.h>
-#include <ESP8266WiFiScan.h>
-#include <ESP8266WiFiType.h>
-#include <WiFiClient.h>
-#include <WiFiClientSecure.h>
-#include <WiFiClientSecureBearSSL.h>
-#include <WiFiServer.h>
-#include <WiFiServerSecure.h>
-#include  <WiFiServerSecureBearSSL.h>
-#include <WiFiUdp.h>
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <Hash.h>
-#include <ESPAsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#include <BlynkSimpleEsp8266.h>
 #include <DHT.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+#include <ESPAsyncWebServer.h>
 
-#include <BlynkSimpleEsp8266.h>  // Updated for ESP8266
-
+// Blynk token
 char auth[] = BLYNK_AUTH_TOKEN;
 
-const char* ssid = "Kainat";  // WiFi adı
-const char* password = "1N2S3A4N";  // WiFi şifrə
-#define DHTPIN 5  // Sensor siqnal pini
-#define DHTTYPE DHT11  // DHT sensor növü
+// Wi-Fi məlumatları
+const char* ssid = "Aqil";
+const char* password = "11111111";
 
-BlynkTimer timer;
+// DHT sensoru
+#define DHTPIN 5
+#define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
-float t = 0.0;
-float h = 0.0;
+float t = 0.0, h = 0.0;
+
+// Timer obyekti
+BlynkTimer timer;
+Adafruit_MPU6050 mpu;
 
 // AsyncWebServer obyektini 80 portunda yarat
 AsyncWebServer server(80);
-unsigned long previousMillis = 0;
-const long interval = 10000;
 
+// HTML səhifəsi
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
@@ -90,32 +75,51 @@ setInterval(function () {
 </script>
 </html>)rawliteral";
 
-String processor(const String& var) {
-  if (var == "TEMPERATURE") {
-    return String(t);
-  } else if (var == "HUMIDITY") {
-    return String(h);
-  }
-  return String();
-}
-
+// Sensor məlumatlarını oxumaq və Blynk-ə göndərmək funksiyası
 void sendSensor() {
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+  h = dht.readHumidity();
+  t = dht.readTemperature();
 
   if (isnan(h) || isnan(t)) {
     Serial.println("Failed to read from DHT sensor!");
     return;
   }
 
-  // Məlumatları Blynk serverinə göndər
-  Blynk.virtualWrite(V0, t);
-  Blynk.virtualWrite(V1, h);
+  // Blynk serverinə məlumatları göndər
+  Blynk.virtualWrite(V1, h);  // Temperatur
+  Blynk.virtualWrite(V2, t);  // Rütubət
 
-  Serial.print("Temperature : ");
+  // MPU6050 məlumatları
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  // Gyroscope məlumatlarını Blynk-ə göndər
+  Blynk.virtualWrite(V3, g.gyro.x);
+  Blynk.virtualWrite(V4, g.gyro.y);
+  Blynk.virtualWrite(V5, g.gyro.z);
+
+  // Accelerometer məlumatlarını Blynk-ə göndər
+  Blynk.virtualWrite(V6, a.acceleration.x);
+  Blynk.virtualWrite(V7, a.acceleration.y);
+  Blynk.virtualWrite(V8, a.acceleration.z);
+
+  Serial.print("Temperature: ");
   Serial.print(t);
-  Serial.print("    Humidity : ");
+  Serial.print("    Humidity: ");
   Serial.println(h);
+  Serial.print("Gyro X: ");
+  Serial.print(g.gyro.x);
+  Serial.print(" Y: ");
+  Serial.print(g.gyro.y);
+  Serial.print(" Z: ");
+  Serial.println(g.gyro.z);
+
+  Serial.print("Accel X: ");
+  Serial.print(a.acceleration.x);
+  Serial.print(" Y: ");
+  Serial.print(a.acceleration.y);
+  Serial.print(" Z: ");
+  Serial.println(a.acceleration.z);
 }
 
 void setup() {
@@ -133,42 +137,42 @@ void setup() {
 
   // Blynk-i işə sal
   Blynk.begin(auth, ssid, password);
+
+  // MPU6050-i işə sal
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10);
+    }
+  }
   
-  // Server kökləmələri
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-    request->send_P(200, "text/html", index_html, processor);
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
+
+  // Sensor məlumatlarını göndərmək üçün taymer
+  timer.setInterval(10000L, sendSensor);
+
+  // Veb səhifə göstəricisi
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", index_html);
   });
-  server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest* request) {
-    request->send_P(200, "text/plain", String(t).c_str());
+
+  // Temperatur məlumatlarını veb səhifəyə göndər
+  server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", String(t).c_str());
   });
-  server.on("/humidity", HTTP_GET, [](AsyncWebServerRequest* request) {
-    request->send_P(200, "text/plain", String(h).c_str());
+
+  // Rütubət məlumatlarını veb səhifəyə göndər
+  server.on("/humidity", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", String(h).c_str());
   });
 
   // Serveri işə sal
   server.begin();
-  
-  // Sensor məlumatlarını göndərmək üçün taymer
-  timer.setInterval(10000L, sendSensor);
 }
 
 void loop() {
   Blynk.run();
   timer.run();
-  
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-
-    // Temperatur və rütubət dəyərlərini yenilə
-    float newT = dht.readTemperature();
-    if (!isnan(newT)) {
-      t = newT;
-    }
-
-    float newH = dht.readHumidity();
-    if (!isnan(newH)) {
-      h = newH;
-    }
-  }
 }
