@@ -11,28 +11,28 @@
 #include <Wire.h>
 #include <ESPAsyncWebServer.h>
 
-// Blynk token
+
 char auth[] = BLYNK_AUTH_TOKEN;
 
-// Wi-Fi məlumatları
+
 const char* ssid = "Aqil";
 const char* password = "11111111";
 
-// DHT sensoru
+
 #define DHTPIN 5
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
 float t = 0.0, h = 0.0;
 
-// Timer obyekti
+
 BlynkTimer timer;
 Adafruit_MPU6050 mpu;
 
-// AsyncWebServer obyektini 80 portunda yarat
+
 AsyncWebServer server(80);
 
-// HTML səhifəsi
+
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
@@ -75,7 +75,7 @@ setInterval(function () {
 </script>
 </html>)rawliteral";
 
-// Sensor məlumatlarını oxumaq və Blynk-ə göndərmək funksiyası
+
 void sendSensor() {
   h = dht.readHumidity();
   t = dht.readTemperature();
@@ -85,20 +85,20 @@ void sendSensor() {
     return;
   }
 
-  // Blynk serverinə məlumatları göndər
-  Blynk.virtualWrite(V1, h);  // Temperatur
-  Blynk.virtualWrite(V2, t);  // Rütubət
+  
+  Blynk.virtualWrite(V1, h);  
+  Blynk.virtualWrite(V2, t);  
 
-  // MPU6050 məlumatları
+  
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
 
-  // Gyroscope məlumatlarını Blynk-ə göndər
+  
   Blynk.virtualWrite(V3, g.gyro.x);
   Blynk.virtualWrite(V4, g.gyro.y);
   Blynk.virtualWrite(V5, g.gyro.z);
 
-  // Accelerometer məlumatlarını Blynk-ə göndər
+  
   Blynk.virtualWrite(V6, a.acceleration.x);
   Blynk.virtualWrite(V7, a.acceleration.y);
   Blynk.virtualWrite(V8, a.acceleration.z);
@@ -126,7 +126,7 @@ void setup() {
   Serial.begin(115200);
   dht.begin();
 
-  // Wi-Fi bağlantısı
+
   WiFi.begin(ssid, password);
   Serial.println("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
@@ -135,10 +135,10 @@ void setup() {
   }
   Serial.println(WiFi.localIP());
 
-  // Blynk-i işə sal
+
   Blynk.begin(auth, ssid, password);
 
-  // MPU6050-i işə sal
+  
   if (!mpu.begin()) {
     Serial.println("Failed to find MPU6050 chip");
     while (1) {
@@ -150,25 +150,24 @@ void setup() {
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
 
-  // Sensor məlumatlarını göndərmək üçün taymer
   timer.setInterval(10000L, sendSensor);
 
-  // Veb səhifə göstəricisi
+  
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html);
   });
 
-  // Temperatur məlumatlarını veb səhifəyə göndər
+  
   server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", String(t).c_str());
   });
 
-  // Rütubət məlumatlarını veb səhifəyə göndər
+
   server.on("/humidity", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", String(h).c_str());
   });
 
-  // Serveri işə sal
+
   server.begin();
 }
 
